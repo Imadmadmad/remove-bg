@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>حذف خلفية الصور — مجاني على بلوجر</title>
+  <style>
+    :root{
+      --bg:#0b1220;--card:#121a2a;--muted:#94a3b8;--text:#e2e8f0;--accent:#22c55e;--accent-2:#60a5fa
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--text);min-height:100vh}
+    .container{max-width:980px;margin-inline:auto;padding:24px}
+    .card{background:var(--card);border:1px solid rgba(255,255,255,.06);border-radius:20px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:20px}
+    h1{font-size:clamp(22px,3vw,32px);margin:0 0 12px}
+    p.lead{color:var(--muted);margin-top:0}
+    .uploader{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:18px 0}
+    .btn{display:inline-flex;align-items:center;gap:8px;cursor:pointer;border:1px solid rgba(255,255,255,.1);background:#0b1425;color:var(--text);padding:10px 14px;border-radius:14px;font-weight:600}
+    .btn.primary{background:linear-gradient(135deg,var(--accent),#16a34a);border-color:transparent;color:#03110a}
+    .btn.secondary{background:linear-gradient(135deg,var(--accent-2),#3b82f6);border-color:transparent;color:#061227}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    input[type="file"]{display:none}
+    .hint{font-size:13px;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    @media(min-width:880px){.grid{grid-template-columns:1fr 1fr}}
+    .panel{background:#0b1425;border:1px dashed rgba(255,255,255,.14);border-radius:16px;padding:14px}
+    .preview{display:grid;place-items:center;aspect-ratio:1/1;background:#0a0f1d;border-radius:12px;overflow:hidden}
+    .preview img{max-width:100%;height:auto;display:block}
+    .footer{margin-top:16px;font-size:12px;color:var(--muted)}
+    .progress{height:8px;background:#0a0f1d;border-radius:999px;overflow:hidden}
+    .bar{height:100%;width:0%;background:linear-gradient(90deg,#22c55e,#3b82f6)}
+    .badge{display:inline-block;padding:.3rem .6rem;border-radius:999px;background:#0b1425;border:1px solid rgba(255,255,255,.08);font-size:12px;color:#a5b4fc}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>حذف خلفية الصور — مجاني 100٪ ويعمل داخل المتصفح</h1>
+      <p class="lead">حمّل صورتك واضغط «إزالة الخلفية». تتم المعالجة محليًا في متصفحك — لا يتم رفع صورك لأي خادم.</p>
+
+      <div class="uploader">
+        <label class="btn" for="file-input">📁 اختر صورة</label>
+        <input id="file-input" type="file" accept="image/*" />
+        <button id="remove-btn" class="btn primary" disabled>✨ إزالة الخلفية</button>
+        <button id="download-btn" class="btn secondary" disabled>⬇️ تنزيل PNG شفاف</button>
+        <span id="status" class="badge">جاهز</span>
+      </div>
+
+      <div class="progress" aria-hidden="true" title="تقدم تحميل النموذج">
+        <div id="progress-bar" class="bar"></div>
+      </div>
+      <p class="hint">ملاحظة: أول تشغيل قد يستغرق أطول قليلًا لأن المتصفح يقوم بتحميل نموذج الذكاء الاصطناعي لمرة واحدة ثم يخزّنه.</p>
+
+      <div class="grid">
+        <div class="panel">
+          <h3>المصدر</h3>
+          <div class="preview" id="src-preview"><span class="hint">لم يتم اختيار صورة بعد…</span></div>
+        </div>
+        <div class="panel">
+          <h3>النتيجة (PNG بخلفية شفافة)</h3>
+          <div class="preview" id="out-preview"><span class="hint">—</span></div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>يعتمد هذا على مكتبة <b>@imgly/background-removal</b> مفتوحة المصدر. للاستخدام التجاري تأكد من مراجعة الرخصة <span dir="ltr">AGPL-3.0</span>.</p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // استيراد المكتبة مباشرة من CDN (ESM)
+    import removeBackground, { preload } from 'https://unpkg.com/@imgly/background-removal@1.7.0/dist/index.mjs';
+
+    // عناصر الواجهة
+    const fileInput = document.getElementById('file-input');
+    const removeBtn = document.getElementById('remove-btn');
+    const downloadBtn = document.getElementById('download-btn');
+    const statusEl = document.getElementById('status');
+    const progressBar = document.getElementById('progress-bar');
+    const srcPreview = document.getElementById('src-preview');
+    const outPreview = document.getElementById('out-preview');
+
+    let selectedFile = null;
+    let resultBlob = null;
+
+    // اختياري: تحميل موارد النموذج مسبقًا لإسراع أول استخدام
+    preload({
+      // يمكنك استبدال "device: 'gpu'" لتفعيل WebGPU إذا كان المتصفح يدعمه
+      // device: 'gpu',
+      progress: (key, current, total) => {
+        const pct = total ? Math.round((current / total) * 100) : 0;
+        progressBar.style.width = pct + '%';
+        statusEl.textContent = `تحميل الموارد: ${pct}%`;
+      }
+    }).then(() => {
+      statusEl.textContent = 'جاهز';
+      progressBar.style.width = '100%';
+      setTimeout(()=>{progressBar.style.width = '0%';}, 1200);
+    }).catch(() => {
+      statusEl.textContent = 'جاهز (تخطّي التحميل المسبق)';
+    });
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      selectedFile = file;
+      resultBlob = null;
+      downloadBtn.disabled = true;
+      removeBtn.disabled = false;
+      // عرض المعاينة الأصلية
+      const url = URL.createObjectURL(file);
+      srcPreview.innerHTML = `<img alt="المعاينة" src="${url}">`;
+      outPreview.innerHTML = '<span class="hint">جاهز للمعالجة…</span>';
+    });
+
+    removeBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+      removeBtn.disabled = true;
+      statusEl.textContent = 'جارٍ إزالة الخلفية…';
+      outPreview.innerHTML = '<span class="hint">⏳ تتم المعالجة في المتصفح…</span>';
+
+      try {
+        // يمكنك تمرير إعدادات إضافية مثل نوع الإخراج
+        // { output: { format: 'image/png', type: 'foreground' }, device: 'gpu' }
+        resultBlob = await removeBackground(selectedFile);
+        const outURL = URL.createObjectURL(resultBlob);
+        outPreview.innerHTML = `<img alt="النتيجة" src="${outURL}">`;
+        downloadBtn.disabled = false;
+        statusEl.textContent = 'تمت الإزالة ✔';
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = 'حدث خطأ ❌';
+        outPreview.innerHTML = '<span class="hint">تعذر معالجة الصورة.</span>';
+      } finally {
+        removeBtn.disabled = false;
+      }
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      if (!resultBlob) return;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(resultBlob);
+      a.download = 'background-removed.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+  </script>
+</body>
+</html>
